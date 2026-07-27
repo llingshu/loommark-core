@@ -567,3 +567,44 @@ test('an annotation block attached to a list item does not close its guide segme
   assert.equal(segments.length, 1);
   assert.equal(source.slice(segments[0].from, segments[0].to), source.slice(source.indexOf('    continuation')));
 });
+
+test('resolveAnnotationTarget widens to a list item\'s own shift+enter continuation lines', () => {
+  const source = [
+    '- item',
+    '    first continuation line',
+    '    second continuation line',
+    '<<<',
+    'note',
+    '<<<',
+  ].join('\n');
+  const [annotation] = annotationRanges(source);
+  const target = resolveAnnotationTarget(source, annotation);
+  assert.equal(
+    source.slice(target.from, target.to),
+    '- item\n    first continuation line\n    second continuation line',
+  );
+});
+
+test('resolveAnnotationTarget stops a list item\'s compound span at a nested child item', () => {
+  const source = [
+    '- item',
+    '    own continuation',
+    '    - nested child',
+    '<<<',
+    'note',
+    '<<<',
+  ].join('\n');
+  const [annotation] = annotationRanges(source);
+  const target = resolveAnnotationTarget(source, annotation);
+  // The annotation attaches to the nested child's own line (the immediate predecessor), which
+  // has no continuation of its own here, so the target is just that one line — the parent
+  // item's "own continuation" line must not be swept in along with it.
+  assert.equal(source.slice(target.from, target.to), '    - nested child');
+});
+
+test('resolveAnnotationTarget stays a single line for a list item with no continuation of its own', () => {
+  const source = ['- item', '<<<', 'note', '<<<'].join('\n');
+  const [annotation] = annotationRanges(source);
+  const target = resolveAnnotationTarget(source, annotation);
+  assert.equal(source.slice(target.from, target.to), '- item');
+});

@@ -674,6 +674,78 @@ export function annotationRanges(source: string): AnnotationRange[] {
 // annotations stacked back to back (regardless of side) all attach to the same original target,
 // rather than annotating each other. Returns undefined only when the annotation has nothing
 // above it to attach to (it opens at the very start of the document).
+// The full span of a list item's own paragraph content — its marker line plus any of its own
+// shift+enter continuation lines directly below it (contiguous lines at its own level with no
+// marker of their own), stopping at the first nested child item or a line no longer indented
+// enough to still belong to it. `lineFrom` doesn't have to be the marker line itself; it can be
+// any of the item's continuation lines too, in which case the same owning item and full span are
+// still found. Returns undefined when `lineFrom` isn't part of any list item's own content at all
+// (a plain paragraph, a nested child's own line counted separately, ...). Walks forward only —
+// unlike the equivalent highlight-the-cursor's-ancestor-path logic this is adapted from (see
+// editor.ts's listGuideField), a target only ever needs to look at what follows a line, never
+// what precedes it.
+function listItemCompoundRange(source: string, lineFrom: number): SourceRange | undefined {
+  const items = listItemRanges(source);
+  if (!items.length) return undefined;
+  const segments = listGuideSegments(source, items);
+  const lines = source.split('\n');
+  const lineOffsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    lineOffsets.push(cursor);
+    cursor += line.length + 1;
+  }
+  const lineIndexByOffset = new Map(lineOffsets.map((offset, index) => [offset, index] as const));
+  const itemByLineFrom = new Map(items.map((item) => [item.lineFrom, item] as const));
+
+  const targetIndex = lineIndexByOffset.get(lineFrom);
+  if (targetIndex === undefined) return undefined;
+
+  const lineLevels = new Map<number, Set<number>>();
+  for (const segment of segments) {
+    let position = segment.from;
+    while (position <= segment.to) {
+      const index = lineIndexByOffset.get(position);
+      if (index === undefined) break;
+      let levels = lineLevels.get(position);
+      if (!levels) {
+        levels = new Set();
+        lineLevels.set(position, levels);
+      }
+      levels.add(segment.level);
+      position += lines[index].length + 1;
+    }
+  }
+
+  let ownerItem = itemByLineFrom.get(lineFrom);
+  let ownLevel = ownerItem?.level;
+  if (!ownerItem) {
+    const levels = lineLevels.get(lineFrom);
+    if (!levels || levels.size === 0) return undefined;
+    ownLevel = Math.max(...levels);
+    const owningSegment = segments.find((segment) => (
+      segment.level === ownLevel && lineFrom >= segment.from && lineFrom <= segment.to
+    ));
+    ownerItem = owningSegment && itemByLineFrom.get(owningSegment.itemLineFrom);
+    if (!ownerItem) return undefined;
+  }
+
+  const ownSegment = segments.find((segment) => segment.level === ownLevel && segment.itemLineFrom === ownerItem!.lineFrom);
+  if (!ownSegment) return { from: ownerItem.lineFrom, to: ownerItem.lineTo };
+
+  let endIndex = lineIndexByOffset.get(ownerItem.lineFrom) ?? targetIndex;
+  for (;;) {
+    const nextIndex = endIndex + 1;
+    if (nextIndex >= lines.length) break;
+    const nextLineFrom = lineOffsets[nextIndex];
+    if (nextLineFrom < ownSegment.from || nextLineFrom > ownSegment.to) break;
+    if (itemByLineFrom.has(nextLineFrom)) break;
+    if (!lineLevels.get(nextLineFrom)?.has(ownLevel!)) break;
+    endIndex = nextIndex;
+  }
+  return { from: ownerItem.lineFrom, to: lineOffsets[endIndex] + lines[endIndex].length };
+}
+
 export function resolveAnnotationTarget(source: string, annotation: AnnotationRange): SourceRange | undefined {
   const lines = source.split('\n');
   const lineOffsets: number[] = [];
@@ -701,5 +773,6 @@ export function resolveAnnotationTarget(source: string, annotation: AnnotationRa
     ...mathRanges(source).filter((math) => math.display),
   ];
   const block = wholeBlocks.find((candidate) => lineFrom >= candidate.from && lineFrom <= candidate.to);
-  return block ? { from: block.from, to: block.to } : { from: lineFrom, to: lineTo };
+  if (block) return { from: block.from, to: block.to };
+  return listItemCompoundRange(source, lineFrom) ?? { from: lineFrom, to: lineTo };
 }
