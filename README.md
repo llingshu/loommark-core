@@ -4,7 +4,22 @@ Portable CodeMirror 6 Markdown editing kernel, extracted from [LoomMark](https:/
 
 ## Status
 
-This package is mid-extraction. What's here today is stable, host-agnostic building blocks: Markdown source scanners, CodeMirror widgets, and shared option types — everything that has zero VS Code-specific coupling in the source project. **`createLoomMarkEditor()`, a single factory function that assembles all of this into one ready-to-use CodeMirror instance, does not exist yet** — that requires converting the source project's `webview/main.ts` (currently ~40 module-level globals — one editor instance per process, which VS Code's one-webview-per-document model happens to make safe) into per-instance state, so this package can support more than one editor on a page at once. Until that lands, a host wires these pieces into its own `EditorState`/`EditorView` setup directly.
+`createLoomMarkEditor(container, options)` assembles a ready-to-use CodeMirror instance: pass it
+a container element and it builds the editor DOM (including the outline drawer) inside it, wires
+up sync/paste-image/link-opening callbacks, and returns a handle (`getText`, `setText`,
+`acknowledgeSync`, `updateConfiguration`, `setWikiFiles`, `revealHeadingByOrdinal`,
+`setOutlineCollapsed`, `getDiagnosticsReport`, `focus`, `destroy`). Multiple independent instances
+can coexist on one page — verified directly: editing one instance, destroying it, or changing its
+configuration/theme/outline state never affects a sibling instance, and `onSync` only fires for
+the instance actually edited.
+
+**Visual styling is not wired up yet.** The editor renders semantically correct markup with the
+right class names, but this package doesn't ship the CSS that styles tables/lists/heading cards/
+etc. — that still lives in the source project's `webview/style.css`, tied to VS Code-specific
+theming hooks (`body.vscode-dark`/`body.vscode-light`, classes VS Code itself injects) that need a
+host-agnostic replacement before the file can move over. Until then, a host using
+`createLoomMarkEditor` will see unstyled (but functional) output beyond what `style.css` already
+covers (currently just KaTeX's own stylesheet).
 
 ## Install
 
@@ -21,6 +36,46 @@ This is published to GitHub Packages, not the public npm registry. A consumer ne
 npm install @llingshu/loommark-core
 ```
 
+### Usage
+
+```js
+import { createLoomMarkEditor } from '@llingshu/loommark-core';
+import '@llingshu/loommark-core/style.css';
+
+const editor = createLoomMarkEditor(document.getElementById('editor-container'), {
+  text: '# Hello\n\nStart typing...',
+  syncDelay: 180,
+  theme: 'vscode',
+  outline: 'both',
+  table: 'rich',
+  tableStyle: 'grid',
+  orderedListStyle: 'cycle',
+  keyboardEditing: false,
+  listGuides: true,
+  cardMode: 'card',
+  cardBackgroundColors: [],
+  cardBorderColors: [],
+  cardBackgroundStrength: 0.06,
+  cardBorderStrength: 0.52,
+  background: { enabled: false, opacity: 0.72, blur: 14, saturation: 0.7, overlay: 0.42, status: 'disabled' },
+  cardImage: { enabled: false, imageUris: [], opacity: 0.72, blur: 4, saturation: 0.75, overlay: 0.18, status: 'disabled' },
+  onSync(text, baseRevision, clientRevision) {
+    // Persist `text` however this host does (a save API, a database write, ...), then:
+    editor.acknowledgeSync(clientRevision, baseRevision + 1, text);
+  },
+});
+
+// Later, when an external change arrives (a reload, a change made elsewhere):
+editor.setText(externalText, externalRevision);
+
+// When done with it:
+editor.destroy();
+```
+
+`extensions` in the options object accepts extra CodeMirror `Extension[]`s appended after this
+package's own — the seam a host uses to add its own `StateField`/keymap/`Decoration` (e.g. an
+annotation-capture feature) without forking.
+
 ### Peer dependencies
 
 CodeMirror and Lezer packages (`@codemirror/*`, `@lezer/*`) are **peer dependencies**, not regular dependencies — install them yourself, matching the version ranges in `package.json`. This is deliberate: CodeMirror's `StateField`/`StateEffect`/`Facet` definitions rely on reference identity, so two copies of `@codemirror/state` coexisting in a dependency tree (one bundled into this package, one already in your own) silently makes this package's extensions invisible to your `EditorView`. Declaring them as peers keeps exactly one copy in the whole tree — yours.
@@ -33,7 +88,7 @@ CodeMirror and Lezer packages (`@codemirror/*`, `@lezer/*`) are **peer dependenc
 import '@llingshu/loommark-core/style.css';
 ```
 
-Currently just KaTeX's stylesheet (needed by the math widget). The package's own visual styling (tables, lists, heading cards, etc.) moves here once `webview/main.ts`'s decorations move over from the source project.
+Currently just KaTeX's stylesheet (needed by the math widget). The package's own visual styling (tables, lists, heading cards, etc.) moves here once `webview/style.css` moves over from the source project (see Status above).
 
 ## Local development against a consumer
 
@@ -55,6 +110,7 @@ The consumer's `package.json` keeps its real semver range (e.g. `"@llingshu/loom
 
 ## Layout
 
+- `src/editor.ts` — `createLoomMarkEditor()`, the factory that assembles everything else below into a live, per-instance CodeMirror `EditorView`.
 - `src/types.ts` — editor option types (`EditorConfiguration` and friends). A host's own wire protocol (if it has one, e.g. LoomMark's VS Code postMessage types) wraps these; they don't belong to any one host.
 - `src/markdown-ranges.ts` — pure source scanners (tables, images, math, lists, headings, ...). No DOM, no CodeMirror.
 - `src/widgets.ts` — CodeMirror `WidgetType` subclasses and the rendering helpers they use.
