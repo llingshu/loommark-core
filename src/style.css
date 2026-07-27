@@ -1,0 +1,6 @@
+/* KaTeX's stylesheet, re-exported at this package's boundary so a host only needs one CSS import
+   (`@llingshu/loommark-core/style.css`) to get everything this package's widgets need to render
+   correctly, math included. The package's own visual styling for tables/lists/cards/etc. will be
+   added here once it moves over from the VS Code host build (still tied to its not-yet-refactored
+   class names emitted by webview/main.ts). */
+@import 'katex/dist/katex.min.css';

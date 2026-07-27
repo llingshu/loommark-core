@@ -1,0 +1,26 @@
+# Dependencies and generated output
+/node_modules/
+/dist/
+/out/
+
+# Test and coverage output
+/coverage/
+/.nyc_output/
+
+# Local environment and logs
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+*.tsbuildinfo
+/.cache/
+/.eslintcache
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+*.code-workspace
