@@ -13,13 +13,15 @@ can coexist on one page — verified directly: editing one instance, destroying 
 configuration/theme/outline state never affects a sibling instance, and `onSync` only fires for
 the instance actually edited.
 
-**Visual styling is not wired up yet.** The editor renders semantically correct markup with the
-right class names, but this package doesn't ship the CSS that styles tables/lists/heading cards/
-etc. — that still lives in the source project's `webview/style.css`, tied to VS Code-specific
-theming hooks (`body.vscode-dark`/`body.vscode-light`, classes VS Code itself injects) that need a
-host-agnostic replacement before the file can move over. Until then, a host using
-`createLoomMarkEditor` will see unstyled (but functional) output beyond what `style.css` already
-covers (currently just KaTeX's own stylesheet).
+Visual styling has moved over too: `style.css` now includes the full table/list/heading-card/code
+styling, scoped to `.loommark-workspace` (the class `createLoomMarkEditor` adds to its container)
+instead of the VS Code webview's `<body>`. The genuinely VS Code-specific pieces — a page-level
+`html`/`body` reset, and overrides keyed on `vscode-light`/`vscode-dark` classes VS Code itself
+injects to signal its active color theme — stay in the VS Code extension's own small stylesheet
+layered on top, since this package has no way to know what mechanism a given host uses to signal
+"the surrounding theme is dark." Verified end to end against the real VS Code extension consuming
+this package, including that override chain (a dark VS Code theme correctly flips code blocks to
+their inverted "paper card" styling).
 
 ## Install
 
@@ -88,7 +90,24 @@ CodeMirror and Lezer packages (`@codemirror/*`, `@lezer/*`) are **peer dependenc
 import '@llingshu/loommark-core/style.css';
 ```
 
-Currently just KaTeX's stylesheet (needed by the math widget). The package's own visual styling (tables, lists, heading cards, etc.) moves here once `webview/style.css` moves over from the source project (see Status above).
+Includes KaTeX's own stylesheet (needed by the math widget) plus this package's visual styling for
+tables, lists, heading cards, and everything else — one import covers all of it.
+
+### A second, CodeMirror-free entry point
+
+```js
+import { markdownHeadings, singleSplice } from '@llingshu/loommark-core/pure';
+```
+
+`@llingshu/loommark-core/pure` re-exports `types.ts`/`markdown-ranges.ts`/`headings.ts`/`text.ts`/
+`paste-image.ts` — everything with zero CodeMirror or DOM dependency — built from its own separate
+source file rather than carved out of the main entry point by tree-shaking. That distinction
+matters in practice: the main entry point ships as one already-bundled file, and a downstream
+bundler's tree-shaking can't reliably prove the CodeMirror-touching half is unreachable just
+because a consumer only imports a few of its other named exports — a Node.js host that only needs
+(say) heading extraction, with no browser/CodeMirror available at all, should import from `/pure`
+specifically rather than the bare package, or risk pulling in code that references `document`/
+`window` into a process that has neither.
 
 ## Local development against a consumer
 
@@ -111,6 +130,7 @@ The consumer's `package.json` keeps its real semver range (e.g. `"@llingshu/loom
 ## Layout
 
 - `src/editor.ts` — `createLoomMarkEditor()`, the factory that assembles everything else below into a live, per-instance CodeMirror `EditorView`.
+- `src/pure.ts` — the `/pure` entry point: re-exports only the CodeMirror/DOM-free modules below (types, markdown-ranges, headings, text, paste-image), for hosts that can't or shouldn't pull in `editor.ts`/`widgets.ts`.
 - `src/types.ts` — editor option types (`EditorConfiguration` and friends). A host's own wire protocol (if it has one, e.g. LoomMark's VS Code postMessage types) wraps these; they don't belong to any one host.
 - `src/markdown-ranges.ts` — pure source scanners (tables, images, math, lists, headings, ...). No DOM, no CodeMirror.
 - `src/widgets.ts` — CodeMirror `WidgetType` subclasses and the rendering helpers they use.
