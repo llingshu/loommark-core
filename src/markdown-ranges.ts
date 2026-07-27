@@ -377,9 +377,19 @@ function cycleNumeral(value: number, level: number): string {
 
 // True when the source between two consecutive list items contains a real, non-list line
 // (a paragraph, a heading, ...) rather than only blank lines — a genuine CommonMark list
-// break, after which numbering restarts rather than continuing.
-function isListInterrupted(source: string, from: number, to: number): boolean {
-  return source.slice(from, to).split('\n').some((line) => line.trim().length > 0);
+// break, after which numbering restarts rather than continuing. An annotation block (see
+// annotationRanges below) is excluded here the same way code/math ranges are excluded
+// elsewhere in this file: the list must count it as if it were not there at all, not as a
+// blank line and not as interrupting content, since a stacked annotation is commonly the only
+// thing separating two items that are still meant to be one continuous list.
+function isListInterrupted(source: string, from: number, to: number, excluded: SourceRange[]): boolean {
+  const lines = source.slice(from, to).split('\n');
+  let offset = from;
+  for (const line of lines) {
+    if (line.trim().length > 0 && !containsPosition(excluded, offset)) return true;
+    offset += line.length + 1;
+  }
+  return false;
 }
 
 // Computes a display label for each ordered item, keyed by its markerFrom offset. Mirrors
@@ -394,9 +404,10 @@ export function orderedListLabels(
   const labels = new Map<number, string>();
   const counters: number[] = [];
   const lastOrderedAtLevel: boolean[] = [];
+  const excluded = annotationRanges(source);
   let previous: ListItemRange | undefined;
   for (const item of items) {
-    if (previous && isListInterrupted(source, previous.lineTo, item.lineFrom)) {
+    if (previous && isListInterrupted(source, previous.lineTo, item.lineFrom, excluded)) {
       counters.length = 0;
       lastOrderedAtLevel.length = 0;
     }
@@ -441,6 +452,7 @@ export function listGuideSegments(source: string, items: ListItemRange[]): ListG
     lineOffsets.push(cursor);
     cursor += line.length + 1;
   }
+  const excluded = annotationRanges(source);
   const itemByLineIndex = new Map<number, ListItemRange>();
   for (const item of items) {
     const lineIndex = lineOffsets.indexOf(item.lineFrom);
@@ -475,6 +487,10 @@ export function listGuideSegments(source: string, items: ListItemRange[]): ListG
       lastContentLineIndex = lineIndex;
       continue;
     }
+    // An annotation block's own lines (its delimiters and content alike) are invisible here,
+    // the same way they're excluded from isListInterrupted above: skipped entirely rather than
+    // treated as under-indented content that would close every open segment.
+    if (containsPosition(excluded, lineOffsets[lineIndex])) continue;
     const line = lines[lineIndex];
     if (!line.trim()) continue;
     const indent = lineIndent(line);
@@ -603,4 +619,87 @@ export function headingSections(source: string, headings: HeadingRange[]): Headi
     sections.push({ level: closed.level, from: closed.lineFrom, to: source.length });
   }
   return sections;
+}
+
+// A fence-style block, the same shape as a code fence: a line consisting of only the delimiter
+// (`<<<` or `>>>`, optionally indented) opens it, an identical line closes it, and everything in
+// between is content — not re-parsed for nested delimiters, so a `>>>` line inside an open `<<<`
+// block is just content, never a second, independently-opened block. `side` names which margin
+// the annotation attaches to: `<<<` is a left (before-the-line) annotation, `>>>` is right.
+export type AnnotationRange = {
+  from: number;
+  to: number;
+  side: 'left' | 'right';
+  contentFrom: number;
+  contentTo: number;
+  text: string;
+};
+
+const annotationDelimiterPattern = /^[ \t]*(<<<|>>>)\s*$/;
+
+export function annotationRanges(source: string): AnnotationRange[] {
+  const excluded = fencedCodeRanges(source);
+  const lines = source.split('\n');
+  const results: AnnotationRange[] = [];
+  let offset = 0;
+  let open: { marker: string; from: number; to: number; line: number } | undefined;
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const lineFrom = offset;
+    const lineTo = offset + line.length;
+    const match = !containsPosition(excluded, lineFrom) ? line.match(annotationDelimiterPattern) : null;
+    if (!open) {
+      if (match) open = { marker: match[1], from: lineFrom, to: lineTo, line: index };
+    } else if (match && match[1] === open.marker) {
+      const contentFrom = open.to + 1;
+      const contentTo = lineFrom > contentFrom ? lineFrom - 1 : contentFrom;
+      results.push({
+        from: open.from,
+        to: lineTo,
+        side: open.marker === '<<<' ? 'left' : 'right',
+        contentFrom,
+        contentTo,
+        text: lines.slice(open.line + 1, index).join('\n'),
+      });
+      open = undefined;
+    }
+    offset = lineTo + 1;
+  }
+  return results;
+}
+
+// Where a `<<<`/`>>>` annotation block attaches: the structural line (or, if that line belongs
+// to one, the whole table/fenced-code/display-math block) immediately preceding it in the
+// document, skipping past any other annotation blocks directly above it first — so several
+// annotations stacked back to back (regardless of side) all attach to the same original target,
+// rather than annotating each other. Returns undefined only when the annotation has nothing
+// above it to attach to (it opens at the very start of the document).
+export function resolveAnnotationTarget(source: string, annotation: AnnotationRange): SourceRange | undefined {
+  const lines = source.split('\n');
+  const lineOffsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    lineOffsets.push(cursor);
+    cursor += line.length + 1;
+  }
+  const annotations = annotationRanges(source);
+  let lineIndex = lineOffsets.findIndex((from) => from === annotation.from) - 1;
+
+  while (lineIndex >= 0) {
+    const lineFrom = lineOffsets[lineIndex];
+    const owner = annotations.find((candidate) => lineFrom >= candidate.from && lineFrom <= candidate.to);
+    if (!owner) break;
+    lineIndex = lineOffsets.findIndex((from) => from === owner.from) - 1;
+  }
+  if (lineIndex < 0) return undefined;
+
+  const lineFrom = lineOffsets[lineIndex];
+  const lineTo = lineFrom + lines[lineIndex].length;
+  const wholeBlocks: SourceRange[] = [
+    ...tableRanges(source),
+    ...fencedCodeRanges(source),
+    ...mathRanges(source).filter((math) => math.display),
+  ];
+  const block = wholeBlocks.find((candidate) => lineFrom >= candidate.from && lineFrom <= candidate.to);
+  return block ? { from: block.from, to: block.to } : { from: lineFrom, to: lineTo };
 }

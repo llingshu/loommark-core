@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  annotationRanges,
   detailedFencedCodeRanges,
   fencedCodeRanges,
   inlineCodeRanges,
@@ -16,6 +17,7 @@ import {
   mathRanges,
   orderedListLabels,
   quoteLineRanges,
+  resolveAnnotationTarget,
   tableRanges,
   tagRanges,
 } from '../out/test/markdown-ranges.mjs';
@@ -442,4 +444,126 @@ test('a same-level heading closes all deeper open sections at once', () => {
   assert.equal(sections.length, 4);
   const closedBeforeFour = sections.filter((s) => s.to === source.indexOf('# Four') - 1);
   assert.equal(closedBeforeFour.length, 3);
+});
+
+test('parses a left annotation block with single-line content', () => {
+  const source = 'target line\n<<<\nnote text\n<<<\nafter';
+  const [annotation] = annotationRanges(source);
+  assert.equal(annotation.side, 'left');
+  assert.equal(annotation.text, 'note text');
+  assert.equal(source.slice(annotation.from, annotation.to), '<<<\nnote text\n<<<');
+});
+
+test('parses a right annotation block with multi-line content', () => {
+  const source = 'target line\n>>>\nline one\nline two\n>>>\nafter';
+  const [annotation] = annotationRanges(source);
+  assert.equal(annotation.side, 'right');
+  assert.equal(annotation.text, 'line one\nline two');
+  assert.equal(source.slice(annotation.contentFrom, annotation.contentTo), 'line one\nline two');
+});
+
+test('an unclosed annotation block extends to the end of the document', () => {
+  const source = 'target\n<<<\nnever closed';
+  const [annotation] = annotationRanges(source);
+  assert.equal(annotation, undefined);
+});
+
+test('ignores annotation-like delimiters inside a fenced code block', () => {
+  const source = 'target\n```\n<<<\ncode, not an annotation\n<<<\n```\nafter';
+  assert.deepEqual(annotationRanges(source), []);
+});
+
+test('a delimiter line with trailing content does not open or close a block', () => {
+  const source = 'target\n<<< not a delimiter\nsome text\n<<<\nafter';
+  assert.deepEqual(annotationRanges(source), []);
+});
+
+test('resolveAnnotationTarget attaches to the immediately preceding line', () => {
+  const source = 'target line\n<<<\nnote\n<<<\nafter';
+  const [annotation] = annotationRanges(source);
+  const target = resolveAnnotationTarget(source, annotation);
+  assert.equal(source.slice(target.from, target.to), 'target line');
+});
+
+test('resolveAnnotationTarget skips past other annotation blocks stacked directly above it, regardless of side', () => {
+  const source = [
+    'target line',
+    '<<<',
+    'first note',
+    '<<<',
+    '>>>',
+    'second note',
+    '>>>',
+  ].join('\n');
+  const [first, second] = annotationRanges(source);
+  const firstTarget = resolveAnnotationTarget(source, first);
+  const secondTarget = resolveAnnotationTarget(source, second);
+  assert.equal(source.slice(firstTarget.from, firstTarget.to), 'target line');
+  assert.equal(source.slice(secondTarget.from, secondTarget.to), 'target line');
+});
+
+test('resolveAnnotationTarget treats a table/code/math block above it as one whole target', () => {
+  const tableSource = ['| a | b |', '| --- | --- |', '| 1 | 2 |', '<<<', 'note', '<<<'].join('\n');
+  const [tableAnnotation] = annotationRanges(tableSource);
+  const tableTarget = resolveAnnotationTarget(tableSource, tableAnnotation);
+  assert.equal(tableSource.slice(tableTarget.from, tableTarget.to), '| a | b |\n| --- | --- |\n| 1 | 2 |');
+
+  const codeSource = ['```', 'line one', 'line two', '```', '<<<', 'note', '<<<'].join('\n');
+  const [codeAnnotation] = annotationRanges(codeSource);
+  const codeTarget = resolveAnnotationTarget(codeSource, codeAnnotation);
+  assert.equal(codeSource.slice(codeTarget.from, codeTarget.to), '```\nline one\nline two\n```');
+
+  const mathSource = ['$$', 'x = 1', '$$', '<<<', 'note', '<<<'].join('\n');
+  const [mathAnnotation] = annotationRanges(mathSource);
+  const mathTarget = resolveAnnotationTarget(mathSource, mathAnnotation);
+  assert.equal(mathSource.slice(mathTarget.from, mathTarget.to), '$$\nx = 1\n$$');
+});
+
+test('resolveAnnotationTarget returns undefined for an annotation with nothing above it', () => {
+  const source = '<<<\nnote\n<<<\nafter';
+  const [annotation] = annotationRanges(source);
+  assert.equal(resolveAnnotationTarget(source, annotation), undefined);
+});
+
+test('an annotation block between two ordered items does not interrupt numbering', () => {
+  const source = [
+    '1. first',
+    '<<<',
+    'a comment on "first"',
+    '<<<',
+    '2. second',
+  ].join('\n');
+  const items = listItemRanges(source);
+  const labels = orderedListLabels(source, items, 'decimal');
+  assert.equal(labels.get(items[0].markerFrom), '1');
+  assert.equal(labels.get(items[1].markerFrom), '2');
+});
+
+test('a real blank paragraph between ordered items still interrupts numbering (control case)', () => {
+  const source = [
+    '1. first',
+    '',
+    'a real paragraph, not an annotation',
+    '',
+    '1. second',
+  ].join('\n');
+  const items = listItemRanges(source);
+  const labels = orderedListLabels(source, items, 'decimal');
+  assert.equal(labels.get(items[0].markerFrom), '1');
+  assert.equal(labels.get(items[1].markerFrom), '1');
+});
+
+test('an annotation block attached to a list item does not close its guide segment', () => {
+  const source = [
+    '- item',
+    '    continuation paragraph',
+    '<<<',
+    'a comment',
+    '<<<',
+    '    more continuation, still part of the item',
+  ].join('\n');
+  const items = listItemRanges(source);
+  const segments = listGuideSegments(source, items);
+  assert.equal(segments.length, 1);
+  assert.equal(source.slice(segments[0].from, segments[0].to), source.slice(source.indexOf('    continuation')));
 });
