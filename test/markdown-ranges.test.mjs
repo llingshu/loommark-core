@@ -608,3 +608,35 @@ test('resolveAnnotationTarget stays a single line for a list item with no contin
   const target = resolveAnnotationTarget(source, annotation);
   assert.equal(source.slice(target.from, target.to), '- item');
 });
+
+test('a heading-looking line inside an annotation block is not a real heading', () => {
+  const source = ['# real heading', 'body', '<<<', '# not a real heading', '<<<', 'after'].join('\n');
+  const headings = headingRanges(source);
+  assert.equal(headings.length, 1);
+  assert.equal(source.slice(headings[0].lineFrom, headings[0].lineTo), '# real heading');
+});
+
+test('a table-looking block inside an annotation is not a real table', () => {
+  const source = ['<<<', '| a | b |', '| --- | --- |', '| 1 | 2 |', '<<<'].join('\n');
+  assert.deepEqual(tableRanges(source), []);
+});
+
+test('a $$...$$ block inside an annotation is not real display math', () => {
+  const source = ['<<<', '$$', 'x = 1', '$$', '<<<'].join('\n');
+  assert.deepEqual(mathRanges(source), []);
+});
+
+test('a blockquote-looking line inside an annotation is not a real blockquote', () => {
+  const source = ['<<<', '> not a real quote', '<<<'].join('\n');
+  assert.deepEqual(quoteLineRanges(source), []);
+});
+
+test('a horizontal-rule-looking line inside an annotation is not a real rule', () => {
+  const source = ['<<<', '---', '<<<'].join('\n');
+  assert.deepEqual(horizontalRuleRanges(source), []);
+});
+
+test('a #tag-looking token inside an annotation is not a real tag', () => {
+  const source = ['<<<', '#nottag', '<<<'].join('\n');
+  assert.deepEqual(tagRanges(source), []);
+});

@@ -184,7 +184,7 @@ export type TagRange = { from: number; to: number; name: string };
 const tagPattern = /(?<![\w#])#([A-Za-z_][\w/-]*)/g;
 
 export function tagRanges(source: string): TagRange[] {
-  const excluded = [...codeRanges(source), ...linkDestinationRanges(source)];
+  const excluded = [...codeRanges(source), ...linkDestinationRanges(source), ...annotationRanges(source)];
   const results: TagRange[] = [];
   for (const match of source.matchAll(tagPattern)) {
     const from = match.index ?? 0;
@@ -206,7 +206,7 @@ export type TableRange = {
 
 export function tableRanges(source: string): TableRange[] {
   const lines = source.split('\n');
-  const excluded = fencedCodeRanges(source);
+  const excluded = [...fencedCodeRanges(source), ...annotationRanges(source)];
   const offsets: number[] = [];
   let offset = 0;
   for (const line of lines) {
@@ -507,7 +507,7 @@ const displayMathPattern = /\$\$([\s\S]+?)\$\$/g;
 const inlineMathPattern = /(?<![\\$])\$(?!\s|\$)([^$\n]+?)(?<![\s\\])\$(?!\d|\$)/g;
 
 export function mathRanges(source: string): MathRange[] {
-  const excluded = codeRanges(source);
+  const excluded = [...codeRanges(source), ...annotationRanges(source)];
   const results: MathRange[] = [];
   for (const match of source.matchAll(displayMathPattern)) {
     const from = match.index ?? 0;
@@ -528,7 +528,7 @@ export function mathRanges(source: string): MathRange[] {
 export type QuoteLineRange = { lineFrom: number; markerFrom: number; markerTo: number; depth: number };
 
 export function quoteLineRanges(source: string): QuoteLineRange[] {
-  const excluded = fencedCodeRanges(source);
+  const excluded = [...fencedCodeRanges(source), ...annotationRanges(source)];
   const lines = source.split('\n');
   const results: QuoteLineRange[] = [];
   let offset = 0;
@@ -548,7 +548,7 @@ export function quoteLineRanges(source: string): QuoteLineRange[] {
 }
 
 export function horizontalRuleRanges(source: string): SourceRange[] {
-  const excluded = fencedCodeRanges(source);
+  const excluded = [...fencedCodeRanges(source), ...annotationRanges(source)];
   const lines = source.split('\n');
   const results: SourceRange[] = [];
   let offset = 0;
@@ -584,12 +584,15 @@ export type HeadingRange = { lineFrom: number; lineTo: number; level: number };
 const headingPattern = /^( {0,3})(#{1,6})(\s+)/;
 
 export function headingRanges(source: string): HeadingRange[] {
+  const excluded = annotationRanges(source);
   const lines = source.split('\n');
   const results: HeadingRange[] = [];
   let offset = 0;
   for (const line of lines) {
     const match = line.match(headingPattern);
-    if (match) results.push({ lineFrom: offset, lineTo: offset + line.length, level: match[2].length });
+    if (match && !containsPosition(excluded, offset)) {
+      results.push({ lineFrom: offset, lineTo: offset + line.length, level: match[2].length });
+    }
     offset += line.length + 1;
   }
   return results;
