@@ -636,35 +636,56 @@ export type AnnotationRange = {
   contentFrom: number;
   contentTo: number;
   text: string;
+  // A fixed color a host chose when this block was created (e.g. the COLOR_PALETTE entries
+  // silk-markdown's annotation-extension.ts assigns), written as exactly 6 hex digits directly
+  // after the opening marker with no space (`<<<7c3aed`) so a host can render the same color
+  // forever after instead of recomputing one from this annotation's position among all others —
+  // which shifts whenever an earlier annotation elsewhere is added or removed. Undefined for a
+  // block that never had one (typed by hand, or from before this existed), which a host then
+  // falls back to assigning by position, same as always. Only the OPENING delimiter can carry
+  // this; the closing one must stay bare — the same asymmetry a fenced code block's language tag
+  // already has (only the opening fence takes one).
+  color?: string;
 };
 
-const annotationDelimiterPattern = /^[ \t]*(<<<|>>>)\s*$/;
+// Bare only — used to match a valid *closing* delimiter, which never carries a tag.
+const annotationClosePattern = /^[ \t]*(<<<|>>>)\s*$/;
+// The marker, then either nothing or exactly 6 hex digits (a color — see AnnotationRange.color),
+// then only whitespace — used to match a valid *opening* delimiter. Anything else trailing the
+// marker (a stray word, a malformed or wrong-length tag) fails the whole pattern, so a line like
+// `<<< not a delimiter` still isn't treated as a delimiter at all, matching the original syntax.
+const annotationOpenPattern = /^[ \t]*(<<<|>>>)([0-9a-fA-F]{6})?\s*$/;
 
 export function annotationRanges(source: string): AnnotationRange[] {
   const excluded = fencedCodeRanges(source);
   const lines = source.split('\n');
   const results: AnnotationRange[] = [];
   let offset = 0;
-  let open: { marker: string; from: number; to: number; line: number } | undefined;
+  let open: { marker: string; color: string | undefined; from: number; to: number; line: number } | undefined;
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
     const lineFrom = offset;
     const lineTo = offset + line.length;
-    const match = !containsPosition(excluded, lineFrom) ? line.match(annotationDelimiterPattern) : null;
+    const excludedHere = containsPosition(excluded, lineFrom);
     if (!open) {
-      if (match) open = { marker: match[1], from: lineFrom, to: lineTo, line: index };
-    } else if (match && match[1] === open.marker) {
-      const contentFrom = open.to + 1;
-      const contentTo = lineFrom > contentFrom ? lineFrom - 1 : contentFrom;
-      results.push({
-        from: open.from,
-        to: lineTo,
-        side: open.marker === '<<<' ? 'left' : 'right',
-        contentFrom,
-        contentTo,
-        text: lines.slice(open.line + 1, index).join('\n'),
-      });
-      open = undefined;
+      const match = !excludedHere ? line.match(annotationOpenPattern) : null;
+      if (match) open = { marker: match[1], color: match[2], from: lineFrom, to: lineTo, line: index };
+    } else {
+      const match = !excludedHere ? line.match(annotationClosePattern) : null;
+      if (match && match[1] === open.marker) {
+        const contentFrom = open.to + 1;
+        const contentTo = lineFrom > contentFrom ? lineFrom - 1 : contentFrom;
+        results.push({
+          from: open.from,
+          to: lineTo,
+          side: open.marker === '<<<' ? 'left' : 'right',
+          contentFrom,
+          contentTo,
+          text: lines.slice(open.line + 1, index).join('\n'),
+          ...(open.color ? { color: open.color } : {}),
+        });
+        open = undefined;
+      }
     }
     offset = lineTo + 1;
   }

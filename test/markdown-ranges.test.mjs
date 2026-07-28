@@ -478,6 +478,40 @@ test('a delimiter line with trailing content does not open or close a block', ()
   assert.deepEqual(annotationRanges(source), []);
 });
 
+test('an opening delimiter can carry a fixed color as a 6-hex-digit tag', () => {
+  const source = 'target\n<<<7c3aed\nnote text\n<<<\nafter';
+  const [annotation] = annotationRanges(source);
+  assert.equal(annotation.color, '7c3aed');
+  assert.equal(annotation.text, 'note text');
+  assert.equal(annotation.side, 'left');
+});
+
+test('a right annotation can carry a color tag too', () => {
+  const source = 'target\n>>>2563eb\nnote text\n>>>\nafter';
+  const [annotation] = annotationRanges(source);
+  assert.equal(annotation.color, '2563eb');
+  assert.equal(annotation.side, 'right');
+});
+
+test('a bare opening delimiter has no color', () => {
+  const source = 'target\n<<<\nnote text\n<<<\nafter';
+  const [annotation] = annotationRanges(source);
+  assert.equal(annotation.color, undefined);
+  assert.equal('color' in annotation, false);
+});
+
+test('the closing delimiter must stay bare — a tag there does not close the block', () => {
+  const source = 'target\n<<<7c3aed\nnote text\n<<<7c3aed\nafter';
+  assert.equal(annotationRanges(source).length, 0);
+});
+
+test('a malformed or wrong-length tag on the opening delimiter is not a delimiter at all', () => {
+  assert.deepEqual(annotationRanges('target\n<<<abc\nnote\n<<<\nafter'), []);
+  assert.deepEqual(annotationRanges('target\n<<<7c3ae\nnote\n<<<\nafter'), []);
+  assert.deepEqual(annotationRanges('target\n<<<7c3aedd\nnote\n<<<\nafter'), []);
+  assert.deepEqual(annotationRanges('target\n<<<zzzzzz\nnote\n<<<\nafter'), []);
+});
+
 test('resolveAnnotationTarget attaches to the immediately preceding line', () => {
   const source = 'target line\n<<<\nnote\n<<<\nafter';
   const [annotation] = annotationRanges(source);
