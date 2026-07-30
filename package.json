@@ -1,6 +1,6 @@
 {
   "name": "@llingshu/loommark-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Portable CodeMirror 6 Markdown editing kernel extracted from LoomMark.",
   "license": "MIT",
   "type": "module",

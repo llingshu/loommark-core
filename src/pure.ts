@@ -7,6 +7,7 @@
 // unreachable just because a consumer only imported a few of its other named exports.
 export * from './types';
 export * from './markdown-ranges';
+export * from './annotations';
 export * from './headings';
 export * from './text';
 export * from './paste-image';
