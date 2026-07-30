@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+type: software
+title: "loommark-core"
+authors:
+  - name: "llingshu and LoomMark contributors"
+repository-code: "https://github.com/llingshu/loommark-core"
+url: "https://github.com/llingshu/loommark-core"
+abstract: >-
+  Portable CodeMirror 6 Markdown editing kernel, extracted from LoomMark (a VS Code
+  custom Markdown editor) so it can be reused across other hosts without maintaining
+  the same source-preserving editing logic twice.
+license: MIT

@@ -3,6 +3,11 @@
   "version": "0.1.1",
   "description": "Portable CodeMirror 6 Markdown editing kernel extracted from LoomMark.",
   "license": "MIT",
+  "author": "llingshu",
+  "homepage": "https://github.com/llingshu/loommark-core#readme",
+  "bugs": {
+    "url": "https://github.com/llingshu/loommark-core/issues"
+  },
   "type": "module",
   "sideEffects": [
     "*.css"
@@ -22,7 +27,8 @@
     "./style.css": "./dist/index.css"
   },
   "files": [
-    "dist"
+    "dist",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "repository": {
     "type": "git",
