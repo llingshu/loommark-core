@@ -1153,11 +1153,12 @@ function buildCodeToolbarDecorations(state: EditorState): DecorationSet {
 function buildHeadingDecorations(view: EditorView): DecorationSet {
   const ranges: Range<Decoration>[] = [];
   const cursor = view.state.selection.main.head;
-  for (let lineNumber = 1; lineNumber <= view.state.doc.lines; lineNumber++) {
-    const line = view.state.doc.line(lineNumber);
+  const source = view.state.doc.toString();
+  for (const heading of headingRanges(source)) {
+    const line = view.state.doc.lineAt(heading.lineFrom);
     const match = line.text.match(/^( {0,3})(#{1,6})(\s+)/);
-    if (!match) continue;
-    const level = match[2].length;
+    if (!match) continue; // Keep the marker offsets coupled to headingRanges' grammar.
+    const level = heading.level;
     const active = cursor >= line.from && cursor <= line.to;
     ranges.push(Decoration.line({
       attributes: { class: `cm-loommark-heading cm-loommark-h${level}${active ? ' cm-loommark-heading-active' : ''}` },

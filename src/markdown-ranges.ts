@@ -586,7 +586,10 @@ export type HeadingRange = { lineFrom: number; lineTo: number; level: number };
 const headingPattern = /^( {0,3})(#{1,6})(\s+)/;
 
 export function headingRanges(source: string): HeadingRange[] {
-  const excluded = annotationRanges(source);
+  // A fence's contents are literal text. Keeping this exclusion here, rather than only in a
+  // particular editor decoration, also prevents fake headings from changing card boundaries and
+  // the document outline.
+  const excluded = [...fencedCodeRanges(source), ...annotationRanges(source)];
   const lines = source.split('\n');
   const results: HeadingRange[] = [];
   let offset = 0;

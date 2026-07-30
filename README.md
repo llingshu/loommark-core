@@ -7,6 +7,11 @@ Portable CodeMirror 6 Markdown editing kernel, extracted from [LoomMark](https:/
 
 ## Status
 
+### 0.1.2
+
+- Fenced code-block content is now excluded from heading scanning, so Markdown examples inside a
+  fence remain literal code and cannot alter a host's heading presentation or outline.
+
 `createLoomMarkEditor(container, options)` assembles a ready-to-use CodeMirror instance: pass it
 a container element and it builds the editor DOM (including the outline drawer) inside it, wires
 up sync/paste-image/link-opening callbacks, and returns a handle (`getText`, `setText`,

@@ -37,6 +37,15 @@ test('keeps an unterminated fence open to end of source', () => {
   assert.equal(block.code, 'code line');
 });
 
+test('does not parse headings inside fenced code blocks', () => {
+  const source = '# Real heading\n```markdown\n## Literal heading\n```\n### Another real heading';
+  const headings = headingRanges(source);
+  assert.deepEqual(headings.map((heading) => source.slice(heading.lineFrom, heading.lineTo)), [
+    '# Real heading',
+    '### Another real heading',
+  ]);
+});
+
 test('inline code is excluded inside fenced blocks', () => {
   const source = '```\n`not inline`\n```\nreal `inline` here';
   const ranges = inlineCodeRanges(source, fencedCodeRanges(source));
