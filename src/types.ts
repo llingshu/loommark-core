@@ -6,7 +6,7 @@ export type EditorTheme = 'vscode' | 'crepe' | 'frame' | 'nord';
 export type OutlineMode = 'both' | 'editor' | 'explorer' | 'off';
 export type TableMode = 'rich' | 'source';
 export type TableStyle = 'grid' | 'ruled';
-export type OrderedListStyle = 'decimal' | 'cycle';
+export type OrderedListStyle = 'source' | 'decimal' | 'cycle';
 
 // off: no heading visualization. tint: soft background wash only, no borders. accent: a colored
 // left border bar per level plus a faint tint. card: bordered, independently rounded nested

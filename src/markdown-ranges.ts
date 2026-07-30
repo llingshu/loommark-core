@@ -420,9 +420,11 @@ export function orderedListLabels(
     lastOrderedAtLevel[item.level] = item.ordered;
     if (!item.ordered) continue;
     counters[item.level] = (counters[item.level] ?? 0) + 1;
-    const label = style === 'decimal'
-      ? counters.slice(0, item.level + 1).join('.')
-      : cycleNumeral(counters[item.level], item.level);
+    const label = style === 'source'
+      ? source.slice(item.markerFrom, item.markerTo - 1)
+      : style === 'decimal'
+        ? counters.slice(0, item.level + 1).join('.')
+        : cycleNumeral(counters[item.level], item.level);
     labels.set(item.markerFrom, label);
   }
   return labels;
@@ -636,6 +638,10 @@ export type AnnotationRange = {
   contentFrom: number;
   contentTo: number;
   text: string;
+  // A stable, human-readable identity written directly after the opening marker
+  // (`<<<[12]`). Hosts can show this same number beside both the target and the margin
+  // card without deriving it from document order. Older blocks simply have no id.
+  id?: number;
   // A fixed color a host chose when this block was created (e.g. the COLOR_PALETTE entries
   // silk-markdown's annotation-extension.ts assigns), written as exactly 6 hex digits directly
   // after the opening marker with no space (`<<<7c3aed`) so a host can render the same color
@@ -650,18 +656,16 @@ export type AnnotationRange = {
 
 // Bare only — used to match a valid *closing* delimiter, which never carries a tag.
 const annotationClosePattern = /^[ \t]*(<<<|>>>)\s*$/;
-// The marker, then either nothing or exactly 6 hex digits (a color — see AnnotationRange.color),
-// then only whitespace — used to match a valid *opening* delimiter. Anything else trailing the
-// marker (a stray word, a malformed or wrong-length tag) fails the whole pattern, so a line like
-// `<<< not a delimiter` still isn't treated as a delimiter at all, matching the original syntax.
-const annotationOpenPattern = /^[ \t]*(<<<|>>>)([0-9a-fA-F]{6})?\s*$/;
+// The marker, an optional positive integer identity (`[12]`), an optional 6-hex-digit color,
+// then only whitespace. All older bare/color-only forms remain valid.
+const annotationOpenPattern = /^[ \t]*(<<<|>>>)(?:\[([1-9]\d*)\])?([0-9a-fA-F]{6})?\s*$/;
 
 export function annotationRanges(source: string): AnnotationRange[] {
   const excluded = fencedCodeRanges(source);
   const lines = source.split('\n');
   const results: AnnotationRange[] = [];
   let offset = 0;
-  let open: { marker: string; color: string | undefined; from: number; to: number; line: number } | undefined;
+  let open: { marker: string; id: number | undefined; color: string | undefined; from: number; to: number; line: number } | undefined;
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
     const lineFrom = offset;
@@ -669,7 +673,13 @@ export function annotationRanges(source: string): AnnotationRange[] {
     const excludedHere = containsPosition(excluded, lineFrom);
     if (!open) {
       const match = !excludedHere ? line.match(annotationOpenPattern) : null;
-      if (match) open = { marker: match[1], color: match[2], from: lineFrom, to: lineTo, line: index };
+      if (match) {
+        const id = match[2] ? Number(match[2]) : undefined;
+        // A persistent identity must never round to a different integer after parsing.
+        if (id === undefined || Number.isSafeInteger(id)) {
+          open = { marker: match[1], id, color: match[3], from: lineFrom, to: lineTo, line: index };
+        }
+      }
     } else {
       const match = !excludedHere ? line.match(annotationClosePattern) : null;
       if (match && match[1] === open.marker) {
@@ -682,6 +692,7 @@ export function annotationRanges(source: string): AnnotationRange[] {
           contentFrom,
           contentTo,
           text: lines.slice(open.line + 1, index).join('\n'),
+          ...(open.id !== undefined ? { id: open.id } : {}),
           ...(open.color ? { color: open.color } : {}),
         });
         open = undefined;
@@ -784,8 +795,11 @@ export function resolveAnnotationTarget(source: string, annotation: AnnotationRa
   while (lineIndex >= 0) {
     const lineFrom = lineOffsets[lineIndex];
     const owner = annotations.find((candidate) => lineFrom >= candidate.from && lineFrom <= candidate.to);
-    if (!owner) break;
-    lineIndex = lineOffsets.findIndex((from) => from === owner.from) - 1;
+    if (owner) {
+      lineIndex = lineOffsets.findIndex((from) => from === owner.from) - 1;
+      continue;
+    }
+    break;
   }
   if (lineIndex < 0) return undefined;
 

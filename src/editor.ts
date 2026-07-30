@@ -430,11 +430,9 @@ const listField = selectionAwareField((state) => {
     }
     const cursorOnLine = cursor >= item.lineFrom && cursor <= item.lineTo;
     if (item.ordered) {
-      // Unlike other markers, this label is a derived display value, not the literal source
-      // text (that's the whole point of loommark.orderedListStyle) — revealing the raw number
-      // when the cursor lands on the line would show a *different* number than what was just
-      // displayed (e.g. "I." becoming "3."), which is confusing rather than informative. Always
-      // show the rendered label; click it like the other rich widgets to edit the source.
+      // Cycle/decimal labels are derived; source mode deliberately returns the literal marker.
+      // Keeping every mode in the same widget preserves click-to-edit behavior without a visual
+      // jump when the cursor reaches a derived label.
       const label = orderedLabels.get(item.markerFrom);
       if (label) {
         const delimiter = source[item.markerTo - 1];

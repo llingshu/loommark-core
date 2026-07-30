@@ -237,6 +237,13 @@ test('decimal style labels a flat ordered list 1, 2, 3', () => {
   assert.deepEqual(items.map((item) => labels.get(item.markerFrom)), ['1', '2', '3']);
 });
 
+test('source style keeps each ordered marker exactly as written', () => {
+  const source = ['1. parent', '    2. child', '    7. another child'].join('\n');
+  const items = listItemRanges(source);
+  const labels = orderedListLabels(source, items, 'source');
+  assert.deepEqual([...labels.values()], ['1', '2', '7']);
+});
+
 test('decimal style nests as 2.1, 2.2, then 2.2.1', () => {
   const source = [
     '1. a',
@@ -493,6 +500,22 @@ test('a right annotation can carry a color tag too', () => {
   assert.equal(annotation.side, 'right');
 });
 
+test('an opening delimiter can carry a persistent numeric id before its color', () => {
+  const source = 'target\n<<<[12]7c3aed\nnote text\n<<<\nafter';
+  const [annotation] = annotationRanges(source);
+  assert.equal(annotation.id, 12);
+  assert.equal(annotation.color, '7c3aed');
+  assert.equal(annotation.text, 'note text');
+});
+
+test('an annotation id does not require a color tag', () => {
+  const source = 'target\n>>>[1]\nnote text\n>>>\nafter';
+  const [annotation] = annotationRanges(source);
+  assert.equal(annotation.id, 1);
+  assert.equal(annotation.color, undefined);
+  assert.equal(annotation.side, 'right');
+});
+
 test('a bare opening delimiter has no color', () => {
   const source = 'target\n<<<\nnote text\n<<<\nafter';
   const [annotation] = annotationRanges(source);
@@ -510,6 +533,13 @@ test('a malformed or wrong-length tag on the opening delimiter is not a delimite
   assert.deepEqual(annotationRanges('target\n<<<7c3ae\nnote\n<<<\nafter'), []);
   assert.deepEqual(annotationRanges('target\n<<<7c3aedd\nnote\n<<<\nafter'), []);
   assert.deepEqual(annotationRanges('target\n<<<zzzzzz\nnote\n<<<\nafter'), []);
+});
+
+test('annotation ids must be unambiguous positive safe integers', () => {
+  assert.deepEqual(annotationRanges('target\n<<<[0]\nnote\n<<<\nafter'), []);
+  assert.deepEqual(annotationRanges('target\n<<<[01]\nnote\n<<<\nafter'), []);
+  assert.deepEqual(annotationRanges('target\n<<<[abc]\nnote\n<<<\nafter'), []);
+  assert.deepEqual(annotationRanges('target\n<<<[9007199254740992]\nnote\n<<<\nafter'), []);
 });
 
 test('resolveAnnotationTarget attaches to the immediately preceding line', () => {
