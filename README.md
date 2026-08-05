@@ -7,6 +7,13 @@ Portable CodeMirror 6 Markdown editing kernel, extracted from [LoomMark](https:/
 
 ## Status
 
+### 0.1.3
+
+- `onStateChange` now reports an optional viewport snapshot, and `initialViewport` restores it.
+  The snapshot preserves both the raw scroll position and a visible-line anchor, so hosts can
+  restore a reader to the same location after cards, images, or line wrapping alter layout; the
+  editor then restores focus at the saved cursor for immediate continued typing.
+
 ### 0.1.2
 
 - Fenced code-block content is now excluded from heading scanning, so Markdown examples inside a

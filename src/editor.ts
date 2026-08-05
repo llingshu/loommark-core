@@ -69,11 +69,18 @@ import type {
   TableStyle,
 } from './types';
 
+export type LoomMarkViewportSnapshot = {
+  scrollTop: number;
+  anchor: number;
+  offset: number;
+};
+
 export type LoomMarkStateSnapshot = {
   text: string;
   documentRevision: number;
   outlineCollapsed: boolean;
   cursor?: number;
+  viewport?: LoomMarkViewportSnapshot;
 };
 
 export type LoomMarkEditorOptions = EditorConfiguration & {
@@ -83,6 +90,7 @@ export type LoomMarkEditorOptions = EditorConfiguration & {
   wikiFiles?: string[];
   initialOutlineCollapsed?: boolean;
   initialCursor?: number;
+  initialViewport?: LoomMarkViewportSnapshot;
   // Extra CodeMirror extensions appended after this package's own — the seam a host uses to add
   // its own StateField/keymap/Decoration (e.g. an annotation-capture feature) without forking.
   extensions?: Extension[];
@@ -196,6 +204,8 @@ let localGeneration = 0;
 const pendingEdits = new Map<number, number>();
 let outlineCollapsed = options.initialOutlineCollapsed ?? true;
 let initialCursorRestored = false;
+let initialViewportRestored = false;
+let viewportSaveTimer: number | undefined;
 let nextPasteRequestId = 1;
 
 const headingDecorations = ViewPlugin.fromClass(class {
@@ -1345,7 +1355,64 @@ function saveState(): void {
     documentRevision,
     outlineCollapsed,
     cursor: editor?.state.selection.main.head,
+    viewport: getViewportSnapshot(),
   });
+}
+
+function getViewportSnapshot(): LoomMarkViewportSnapshot | undefined {
+  if (!editor) return undefined;
+
+  const scrollOwner = getScrollOwner();
+  const viewportTop = scrollOwner === document.scrollingElement
+    ? 0
+    : scrollOwner.getBoundingClientRect().top;
+  const contentRect = editor.contentDOM.getBoundingClientRect();
+  const probeX = Math.max(contentRect.left + 1, Math.min(contentRect.right - 1, container.getBoundingClientRect().left + 12));
+  const position = editor.posAtCoords({ x: probeX, y: viewportTop + 1 });
+  const anchor = position === null ? editor.state.selection.main.head : editor.state.doc.lineAt(position).from;
+  const anchorRect = editor.coordsAtPos(anchor);
+
+  return {
+    scrollTop: scrollOwner.scrollTop,
+    anchor,
+    offset: anchorRect ? anchorRect.top - viewportTop : 0,
+  };
+}
+
+function restoreViewport(viewport: LoomMarkViewportSnapshot): void {
+  if (!editor) return;
+
+  const scrollOwner = getScrollOwner();
+  const viewportTop = scrollOwner === document.scrollingElement
+    ? 0
+    : scrollOwner.getBoundingClientRect().top;
+  scrollOwner.scrollTop = Math.max(0, viewport.scrollTop);
+  const anchor = Math.max(0, Math.min(viewport.anchor, editor.state.doc.length));
+  const anchorRect = editor.coordsAtPos(editor.state.doc.lineAt(anchor).from);
+  if (!anchorRect) return;
+
+  scrollOwner.scrollTop = Math.max(0, scrollOwner.scrollTop + anchorRect.top - viewportTop - viewport.offset);
+}
+
+function getScrollOwner(): HTMLElement {
+  // The VS Code webview lets this workspace grow with its content, so the page usually scrolls.
+  // Embedding hosts may constrain the workspace instead; retain support for that arrangement.
+  if (container.scrollHeight > container.clientHeight + 1) return container;
+  return (document.scrollingElement as HTMLElement | null) ?? container;
+}
+
+function scheduleViewportSave(): void {
+  window.clearTimeout(viewportSaveTimer);
+  viewportSaveTimer = window.setTimeout(() => {
+    viewportSaveTimer = undefined;
+    saveState();
+  }, 120);
+}
+
+function flushViewportSave(): void {
+  window.clearTimeout(viewportSaveTimer);
+  viewportSaveTimer = undefined;
+  saveState();
 }
 
 function scheduleSync(): void {
@@ -1617,10 +1684,23 @@ function createEditor(text: string): void {
     if (!initialCursorRestored && options.initialCursor !== undefined) {
       editor.dispatch({
         selection: { anchor: Math.min(options.initialCursor, text.length) },
-        scrollIntoView: true,
+        scrollIntoView: options.initialViewport === undefined,
       });
     }
     initialCursorRestored = true;
+    if (!initialViewportRestored && options.initialViewport) {
+      // Layout-dependent cards can settle after the EditorView constructor returns. Two frames
+      // make the line anchor reliable without leaving a visible jump from the fallback scrollTop.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        restoreViewport(options.initialViewport!);
+        restoreEditorFocusIfIdle();
+      }));
+    } else {
+      // A host focus event can arrive before its Webview has constructed the EditorView.
+      // Claim focus after construction so returning to a tab resumes typing without a click.
+      requestAnimationFrame(restoreEditorFocusIfIdle);
+    }
+    initialViewportRestored = true;
   } catch (error: unknown) {
     editor = undefined;
     editorInitializationError = error instanceof Error
@@ -2017,8 +2097,11 @@ function restoreEditorFocusIfIdle(): void {
 window.addEventListener('focus', restoreEditorFocusIfIdle);
 const visibilityChangeHandler = (): void => {
   if (document.visibilityState === 'visible') restoreEditorFocusIfIdle();
+  else flushViewportSave();
 };
+const pageHideHandler = (): void => flushViewportSave();
 document.addEventListener('visibilitychange', visibilityChangeHandler);
+window.addEventListener('pagehide', pageHideHandler);
 
 // Capture phase, so this always sees the raw event before CodeMirror's own keymap (or anything
 // else) can act on or stop it -- including a stopPropagation() call that would keep a bubble-phase
@@ -2043,6 +2126,7 @@ const diagnosticsKeydownHandler = (event: KeyboardEvent): void => {
   window.setTimeout(() => { entry.defaultPrevented = event.defaultPrevented; }, 0);
 };
 container.addEventListener('keydown', diagnosticsKeydownHandler, true);
+document.addEventListener('scroll', scheduleViewportSave, true);
 
 applyConfiguration(options);
 createEditor(options.text);
@@ -2061,10 +2145,13 @@ return {
   focus: () => editor?.focus(),
   destroy() {
     window.clearTimeout(timer);
+    window.clearTimeout(viewportSaveTimer);
     editor?.destroy();
     window.removeEventListener('focus', restoreEditorFocusIfIdle);
+    window.removeEventListener('pagehide', pageHideHandler);
     document.removeEventListener('visibilitychange', visibilityChangeHandler);
     container.removeEventListener('keydown', diagnosticsKeydownHandler, true);
+    document.removeEventListener('scroll', scheduleViewportSave, true);
     container.removeEventListener('keydown', outlineEscapeHandler);
   },
 };
