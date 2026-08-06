@@ -2,6 +2,20 @@
 
 All notable changes to `@llingshu/loommark-core` are documented here.
 
+## [0.1.4] - 2026-08-05
+
+### Added
+
+- Block images now render as centered, framed figures by default and show their Markdown alt text
+  as a caption. Their optional Markdown title accepts `no-center` and `no-frame` presentation
+  tokens for opting out independently.
+
+### Fixed
+
+- Standalone images now resolve as complete annotation targets, matching tables, fenced code, and
+  display math. Hosts can therefore attach an annotation stripe and badge to the rendered image
+  block instead of its hidden source line.
+
 ## [0.1.3] - 2026-08-05
 
 ### Added

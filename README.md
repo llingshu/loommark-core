@@ -7,6 +7,13 @@ Portable CodeMirror 6 Markdown editing kernel, extracted from [LoomMark](https:/
 
 ## Status
 
+### 0.1.4
+
+- Standalone images now default to a centered, framed figure with their Markdown alt text as a
+  caption; use `"no-center"` and/or `"no-frame"` in the optional title to opt out.
+- Annotation hosts can resolve standalone images as complete rendered blocks, so image-attached
+  note markers follow the visible image instead of its hidden Markdown source line.
+
 ### 0.1.3
 
 - `onStateChange` now reports an optional viewport snapshot, and `initialViewport` restores it.

@@ -326,6 +326,10 @@ export class MathWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const container = document.createElement(this.block ? 'div' : 'span');
     container.className = `cm-loommark-math${this.block ? ' is-block' : ''}`;
+    if (this.block) {
+      container.dataset.loommarkFrom = String(this.math.from);
+      container.dataset.loommarkTo = String(this.math.to);
+    }
     if (this.block) applyBlockCard(container, this.card);
     container.contentEditable = 'false';
     katex.render(this.math.tex, container, {
@@ -439,6 +443,7 @@ export class ImageWidget extends WidgetType {
     return this.image.from === other.image.from
       && this.image.src === other.image.src
       && this.image.alt === other.image.alt
+      && this.image.title === other.image.title
       && this.resourceBase === other.resourceBase
       && this.card?.style === other.card?.style;
   }
@@ -446,11 +451,24 @@ export class ImageWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const container = document.createElement(this.block ? 'div' : 'span');
     container.className = `cm-loommark-image${this.block ? ' is-block' : ''}`;
+    if (this.block) {
+      container.dataset.loommarkFrom = String(this.image.from);
+      container.dataset.loommarkTo = String(this.image.to);
+    }
+    const presentation = new Set((this.image.title ?? '').toLowerCase().split(/\s+/));
+    // Block images are intentionally presented as figures by default. The title only needs to
+    // name an exception, keeping ordinary `![alt](image.png)` readable without extra syntax.
+    container.classList.toggle('is-centered', this.block && !presentation.has('no-center'));
+    container.classList.toggle('has-frame', this.block && !presentation.has('no-frame'));
     if (this.block) applyBlockCard(container, this.card);
     container.contentEditable = 'false';
     // Ctrl/Cmd + click is handled by the same global `[data-loommark-href]` listener that
     // opens Markdown links, so it opens whether the image is rendered or shown as source.
     container.dataset.loommarkHref = this.image.src;
+    const figure = document.createElement('span');
+    figure.className = 'cm-loommark-image-figure';
+    figure.classList.toggle('is-centered', this.block && !presentation.has('no-center'));
+    figure.classList.toggle('has-frame', this.block && !presentation.has('no-frame'));
     const img = document.createElement('img');
     img.src = resolveImageSource(this.image.src, this.resourceBase);
     img.alt = this.image.alt;
@@ -465,7 +483,14 @@ export class ImageWidget extends WidgetType {
       view.dispatch({ selection: { anchor: this.image.from }, scrollIntoView: true });
       view.focus();
     });
-    container.append(img);
+    figure.append(img);
+    if (this.block && this.image.alt) {
+      const caption = document.createElement('span');
+      caption.className = 'cm-loommark-image-name';
+      caption.textContent = this.image.alt;
+      figure.append(caption);
+    }
+    container.append(figure);
     return container;
   }
 
@@ -559,6 +584,8 @@ export class TableWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const container = document.createElement('div');
     container.className = `cm-loommark-table${this.mode === 'rich' ? ' is-rich' : ''}`;
+    container.dataset.loommarkFrom = String(this.table.from);
+    container.dataset.loommarkTo = String(this.table.to);
     applyBlockCard(container, this.card);
     container.contentEditable = 'false';
     const table = document.createElement('table');

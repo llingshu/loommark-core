@@ -11,3 +11,5 @@ abstract: >-
   custom Markdown editor) so it can be reused across other hosts without maintaining
   the same source-preserving editing logic twice.
 license: MIT
+version: 0.1.4
+date-released: 2026-08-05

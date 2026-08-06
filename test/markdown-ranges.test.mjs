@@ -105,7 +105,13 @@ test('parses an inline image and a titled image', () => {
   const [image] = imageRanges(source);
   assert.equal(image.ownLine, false);
   assert.equal(image.src, 'i.svg');
+  assert.equal(image.title, 'The icon');
   assert.equal(source.slice(image.from, image.to), '![icon](i.svg "The icon")');
+});
+
+test('preserves image presentation tokens in the title', () => {
+  const [image] = imageRanges('![diagram](img/a.png "center frame")');
+  assert.equal(image.title, 'center frame');
 });
 
 test('ignores images inside code', () => {
@@ -575,7 +581,7 @@ test('resolveAnnotationTarget skips past other annotation blocks stacked directl
   assert.equal(source.slice(secondTarget.from, secondTarget.to), 'target line');
 });
 
-test('resolveAnnotationTarget treats a table/code/math block above it as one whole target', () => {
+test('resolveAnnotationTarget treats a table/code/math/block-image above it as one whole target', () => {
   const tableSource = ['| a | b |', '| --- | --- |', '| 1 | 2 |', '<<<', 'note', '<<<'].join('\n');
   const [tableAnnotation] = annotationRanges(tableSource);
   const tableTarget = resolveAnnotationTarget(tableSource, tableAnnotation);
@@ -590,6 +596,11 @@ test('resolveAnnotationTarget treats a table/code/math block above it as one who
   const [mathAnnotation] = annotationRanges(mathSource);
   const mathTarget = resolveAnnotationTarget(mathSource, mathAnnotation);
   assert.equal(mathSource.slice(mathTarget.from, mathTarget.to), '$$\nx = 1\n$$');
+
+  const imageSource = ['![Figure](plot.png)', '<<<', 'note', '<<<'].join('\n');
+  const [imageAnnotation] = annotationRanges(imageSource);
+  const imageTarget = resolveAnnotationTarget(imageSource, imageAnnotation);
+  assert.equal(imageSource.slice(imageTarget.from, imageTarget.to), '![Figure](plot.png)');
 });
 
 test('resolveAnnotationTarget returns undefined for an annotation with nothing above it', () => {

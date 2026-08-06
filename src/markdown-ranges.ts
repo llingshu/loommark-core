@@ -106,11 +106,18 @@ export function detailedFencedCodeRanges(source: string): FencedCodeRange[] {
   return ranges.filter((range) => range.contentStartLine <= range.contentEndLine);
 }
 
-export type ImageRange = { from: number; to: number; alt: string; src: string; ownLine: boolean };
+export type ImageRange = {
+  from: number;
+  to: number;
+  alt: string;
+  src: string;
+  title?: string;
+  ownLine: boolean;
+};
 
 // The destination is either a CommonMark `<...>` wrapped form (allows spaces, no `)`
 // ambiguity) or a bare token that stops at unescaped whitespace or a closing paren.
-const imagePattern = /!\[([^\]\n]*)\]\((?:<([^<>\n]*)>|([^\s)]+))(?:\s+["'][^"'\n]*["'])?\)/g;
+const imagePattern = /!\[([^\]\n]*)\]\((?:<([^<>\n]*)>|([^\s)]+))(?:\s+["']([^"'\n]*)["'])?\)/g;
 
 export function imageRanges(source: string): ImageRange[] {
   const excluded = codeRanges(source);
@@ -127,6 +134,7 @@ export function imageRanges(source: string): ImageRange[] {
       to,
       alt: match[1],
       src: match[2] ?? match[3],
+      title: match[4] || undefined,
       ownLine: source.slice(lineStart, lineEnd).trim() === match[0],
     });
   }
@@ -812,6 +820,9 @@ export function resolveAnnotationTarget(source: string, annotation: AnnotationRa
     ...tableRanges(source),
     ...fencedCodeRanges(source),
     ...mathRanges(source).filter((math) => math.display),
+    // Only an image that occupies a whole line is rendered as one block widget. Inline images
+    // remain part of their text line and retain the ordinary line-level annotation target.
+    ...imageRanges(source).filter((image) => image.ownLine),
   ];
   const block = wholeBlocks.find((candidate) => lineFrom >= candidate.from && lineFrom <= candidate.to);
   if (block) return { from: block.from, to: block.to };

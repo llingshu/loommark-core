@@ -1044,6 +1044,37 @@
   padding: 4px 0;
 }
 
+.loommark-editor-root > .cm-editor .cm-loommark-image.is-block.is-centered {
+  text-align: center;
+}
+
+.loommark-editor-root > .cm-editor .cm-loommark-image-figure.has-frame {
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 8px;
+  border: 1px solid var(--vscode-widget-border, rgb(128 128 128 / 45%));
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+
+.loommark-editor-root > .cm-editor .cm-loommark-image-figure.has-frame img {
+  display: block;
+}
+
+.loommark-editor-root > .cm-editor .cm-loommark-image-name {
+  display: block;
+  max-width: 100%;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
+  font-size: 0.82em;
+  line-height: 1.25;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .loommark-editor-root > .cm-editor .cm-loommark-image-error {
   color: var(--vscode-errorForeground);
   font-size: 0.9em;
